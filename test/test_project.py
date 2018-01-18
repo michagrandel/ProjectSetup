@@ -48,53 +48,34 @@
 """
 
 from __future__ import unicode_literals, print_function
-from io import open
 from unittest import TestCase, skip
-
-import six
-
-__status__ = 'development'
-__author__ = 'Micha Grandel'
-__version__ = ''
-__copyright__ = 'written with <3 by Micha Grandel'
-__license__ = 'Apache License, Version 2.0'
-__contact__ = 'http://github.com/michagrandel'
-
-
-def main():
-    """ """
-    print('Hello World!')
-
-
-if __name__ == '__main__':
-    main()
 
 
 class TestProject(TestCase):
-    @skip()
+    @skip('this is a dummy test')
     def test_add_directory(self):
         self.fail()
 
-    @skip()
+    @skip('this is a dummy test')
     def test_create_from_template(self):
         self.fail()
 
-    @skip()
+    @skip('this is a dummy test')
     def test_generate_requirements(self):
         self.fail()
 
-    @skip()
+    @skip('this is a dummy test')
     def test_convert(self):
         self.fail()
 
-    @skip()
+    @skip('this is a dummy test')
     def test_build(self):
         self.fail()
 
-    @skip()
+    @skip('this is a dummy test')
     def test_is_idea_project(self):
         self.fail()
 
-    @skip()
+    @skip('this is a dummy test')
     def test_exclude(self):
         self.fail()
