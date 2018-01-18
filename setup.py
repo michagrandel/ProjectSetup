@@ -85,7 +85,7 @@ except ImportError:
 __status__ = 'planing'
 __author__ = 'Micha Grandel'
 __maintainer__ = 'Micha Grandel'
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 __copyright__ = 'written with <3 by Micha Grandel'
 __license__ = 'Apache 2.0 license'
 __contact__ = 'talk@michagrandel.de'

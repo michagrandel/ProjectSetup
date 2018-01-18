@@ -1,33 +1,38 @@
-# Backup API
+# ProjectSetup
 
-[![PyPI](https://img.shields.io/pypi/pyversions/ProjectSetup.svg)](http://pypi.python.org)
-[![](https://img.shields.io/travis/michagrandel/ProjectSetup/develop.svg)](https://travis-ci.org/michagrandel/BackupApi)
-[![](https://img.shields.io/codecov/c/github/michagrandel/ProjectSetup/develop.svg)]()
+[![PythonVersions](https://img.shields.io/pypi/pyversions/ProjectSetup.svg)](http://pypi.python.org)
+[![Travis](https://img.shields.io/travis/michagrandel/ProjectSetup/master.svg)](https://travis-ci.org/michagrandel/ProjectSetup)
+![Coverage](https://img.shields.io/codecov/c/github/michagrandel/ProjectSetup/master.svg)
 [![GitHub release](https://img.shields.io/github/release/michagrandel/ProjectSetup.svg)](https://github.com/michagrandel/releases)
 [![PyPI](https://img.shields.io/pypi/v/ProjectSetup.svg)](http://pypi.python.org)
 [![license](https://img.shields.io/github/license/michagrandel/ProjectSetup.svg)](https://github.com/michagrandel/ProjectSetup/blob/master/LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](http://makeapullrequest.com)
 
-Very short description about your project.
+Initialize your Python Project
 
-> **Early Development**
->
-> Please note that this project is in planning/early development phase!
-> Many things might not work or not even exist the way you would expect.
+## Features
+
+ProjectSetup helps you to get started with your Python Project as fast as possible.
+
+It will handle these tasks for you:
+
+* initialize a **python module** named after your project
+* add **Community Files**
+    * Readme.md
+    * Contributing.md
+    * CODE_OF_CONDUCT.md
+    * issue_template.md
+    * PULL_REQUEST_TEMPALTE.md
+* add important project files like **LICENSE**, **setup.py**, **requirements.txt** and more
+* initialize **Sphinx documentation**
+* prepare **test**-directory with a skipping dummy test
+* build a initial **source distribution** and **python wheel**
+* Some **additional customizations** are done for *Jetbrains PyCharm IDE*
+* and [many more features ...][wiki]
+
+*To get a full list of all supported features, please read the [project wiki][wiki].*
 
 ## Getting Started
-
-These instructions will get you a copy of the project up and running on your 
-local machine for development and testing purposes. See deployment for notes on 
-how to deploy the project on a live system.
-
-### Prerequisites
-
-Mention any requirements the user should check and install before using your software.
-
-* Python 2.7 or 3.5
-* tested on Windows 7 and 10
-* should work on macOS and Linux
 
 ### Installing
 
@@ -39,8 +44,18 @@ If this doesn't work, try to download the code,
 extract the zip-file and run:
 
 ```
-python setup.py install
+python setup.py install -r requirements.txt
 ```
+
+### How to run
+
+To run the script, just use the *quickstart.py*-Script in the *script*-folder.
+
+## Customize the settings
+
+To customize everything, you just need to edit the *quickstart.py*.
+
+In future releases, you will be able to use a command line interface without needing to edit the script code.
 
 ## Running the tests
 
@@ -52,8 +67,10 @@ python -m unittest discover -s test -p "*_test.py"
 
 ## Built With
 
-* [Flask](http://flask.pocoo.org/) - is a microframework for Python based on Werkzeug, Jinja 2 and good intentions
-* [PySide](https://pypi.python.org/pypi/PySide/1.2.4) - pythonic Qt bridge
+* [lxml](http://lxml.de/) \
+  *combines the speed and XML feature completeness of these libraries with the simplicity of a native Python API*
+* [Jinja2](http://jinja.pocoo.org/)\
+  *is a full featured template engine for Python*
 
 ## Contributing
 
@@ -76,6 +93,10 @@ We thank all of our [contributors][github-contributors], who participated in thi
 
 This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details
 
+## Code of Conduct
+
+Everyone interacting in the ProjectSetup project's codebases, issue trackers, chat rooms, and mailing lists 
+is expected to follow the [Code of Conduct][code_of_conduct].
 
 [github]: https://github.com/michagrandel
 [github-releases]: https://github.com/michagrandel/ProjectSetup/releases
@@ -85,3 +106,5 @@ This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENS
 [flask]: http://flask.pocoo.org
 [gitflow]: https://danielkummer.github.io/git-flow-cheatsheet/
 [gitflow-model]: http://nvie.com/posts/a-successful-git-branching-model/
+[wiki]: https://github.com/michagrandel/ProjectSetup/wiki
+[code_of_conduct]: https://github.com/michagrandel/ProjectSetup/blob/master/CODE_OF_CONDUCT.md

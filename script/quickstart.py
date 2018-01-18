@@ -59,7 +59,7 @@ from ProjectSetup import *
 
 __status__ = 'development'
 __author__ = 'Micha Grandel'
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 __copyright__ = 'written with <3 by Micha Grandel'
 __license__ = 'Apache License, Version 2.0'
 __contact__ = 'http://github.com/michagrandel'
