@@ -39,11 +39,11 @@
 #                     @formatter:on
 
 """
-:mod:`init_project` -- Describe your module in one sentence
+:mod:`quickstart.py` -- Initialize a python project
 
-.. module:: init_project
+.. module:: quickstart.py
    :platform: Unix, Windows
-   :synopsis: Describe your module in one sentence
+   :synopsis: Initialize a python project
 .. moduleauthor:: Micha Grandel <talk@michagrandel.de>
 """
 
@@ -67,7 +67,11 @@ __contact__ = 'http://github.com/michagrandel'
 
 if __name__ == '__main__':
 
-    project = Project()
+    project = Project(
+        version='1.0.0',
+        status='Alpha Version'
+        description='Initialize a python project'
+    )
     directories = {
         'mandatory': {
             project.name,

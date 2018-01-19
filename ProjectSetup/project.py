@@ -84,7 +84,7 @@ class Project(object):
     initialize project files
     """
 
-    def __init__(self, name=None, path=None, **kwargs):
+    def __init__(self, name=None, path=None, description=None, **kwargs):
         """
         initialize project settings
 
@@ -94,21 +94,27 @@ class Project(object):
         """
         self.path = path or os.path.abspath(os.getcwd())
         self.name = name or os.path.basename(self.path)
+        self.description = description
+        self.license = kwargs.get(b'license', 'Apache 2.0')
 
-        self.author_url = kwargs.get('url', 'https://github.com/michagrandel')
-        self.author = kwargs.get('author', 'Micha Grandel')
-        self.email = kwargs.get('email', 'talk@michagrandel.de')
-        self.version = kwargs.get('version', '0.1.0')
-        self.status = kwargs.get('status', 'planing')
-        self.copyright = kwargs.get('copyright', 'Micha Grandel')
-        self.year = kwargs.get('year', '2018')
-        self.company = kwargs.get('company', 'Unicorn')
+        self.author_url = kwargs.get(b'url', 'https://github.com/michagrandel')
+        self.author = kwargs.get(b'author', 'Micha Grandel')
+        self.email = kwargs.get(b'email', 'talk@michagrandel.de')
+        self.version = kwargs.get(b'version', '0.0.1')
+        self.status = kwargs.get(b'status', 'Planning')
+        self.copyright = kwargs.get(b'copyright', 'Micha Grandel')
+        self.year = kwargs.get(b'year', '2018')
+        self.company = kwargs.get(b'company', 'Unicorn')
         self.url = 'https://github.com/michagrandel/{project}'.format(project=self.name)
-        self.maintainer = kwargs.get('maintainer', self.author)
-        self.maintainer_email = kwargs.get('maintainer_email', self.email)
+        self.maintainer = kwargs.get(b'maintainer', self.author)
+        self.maintainer_email = kwargs.get(b'maintainer_email', self.email)
+        self.pythonversions = kwargs.get(b'compatible', ('27', '35', '36', '37'))
+        self.platforms = \
+            kwargs.get(b'platforms', ('Cross', 'Windows 10', 'Windows 7', 'Ubuntu', 'CentOS', 'macOS', 'Linux'))
+        self.languages = kwargs.get(b'languages', ['English'])
 
         self.template_env = Environment(
-            loader=PackageLoader(self.name),
+            loader=PackageLoader(self.name), trim_blocks=True, lstrip_blocks=True
         )
         self.templates = os.path.abspath(os.path.join(os.path.abspath(os.path.dirname(__file__)), '../template'))
         print('Template in ' + self.templates)
@@ -176,16 +182,21 @@ class Project(object):
                     project_name=self.name,
                     project_path=self.path,
                     project_url=self.author_url,
+                    project_description=self.description,
                     author=self.author,
                     author_email=self.email,
-                    maintainer=self.maintainer,
-                    maintainer_email=self.maintainer_email,
+                    # maintainer=self.maintainer,
+                    # maintainer_email=self.maintainer_email,
                     version=self.version,
                     status=self.status,
-                    copyright=self.copyright,
+                    copyright_holder=self.copyright,
                     company=self.company,
                     year=self.year,
-                    url=self.url
+                    url=self.url,
+                    license=self.license,
+                    pyversion=self.pythonversions,
+                    support=self.platforms,
+                    languages=self.languages
                 )
 
                 try:
@@ -225,7 +236,8 @@ class Project(object):
         :param inputfile: name of input file
         :param fmt: original format of input file, default: markdown
         :param target: convert to target format, default: rst
-        :param method: method for conversion, currently only pandoc is supported. other methods may come in future releases
+        :param method: method for conversion, currently only pandoc is supported.
+                       other methods may come in future releases
         :return:
         """
         output = '{output}.rst'.format(output=os.path.splitext(inputfile)[0])

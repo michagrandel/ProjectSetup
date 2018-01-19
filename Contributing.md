@@ -133,7 +133,7 @@ Don't hesitate to [ask your questions][question] if you have something in mind!
 <!-- external links -->
 <!-- @release: check if these links work and update them if necessary -->
 [gitflow-model]: http://nvie.com/posts/a-successful-git-branching-model/
-[gitflow-cheatsheet]: elhttps://danielkummer.github.io/git-flow-cheatsheet/
+[gitflow-cheatsheet]: https://danielkummer.github.io/git-flow-cheatsheet/
 [bdd]: https://dannorth.net/introducing-bdd/
 [tdd]: https://en.wikipedia.org/wiki/Test-driven_development
 [behave]: https://pypi.python.org/pypi/behave/1.2.5
