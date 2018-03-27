@@ -39,11 +39,11 @@
 #                     @formatter:on
 
 """
-:mod:`init_project` -- Describe your module in one sentence
+:mod:`quickstart.py` -- Initialize a python project
 
-.. module:: init_project
+.. module:: quickstart.py
    :platform: Unix, Windows
-   :synopsis: Describe your module in one sentence
+   :synopsis: Initialize a python project
 .. moduleauthor:: Micha Grandel <talk@michagrandel.de>
 """
 
@@ -53,21 +53,24 @@ from __future__ import unicode_literals, print_function
 import sys
 import os
 
-sys.path.append(os.path.abspath(os.path.join(os.path.abspath(__file__), '../..')))
+# sys.path.append(os.path.abspath(os.path.join(os.path.abspath(__file__), '../..')))
 
 from ProjectSetup import *
 
 __status__ = 'development'
 __author__ = 'Micha Grandel'
-__version__ = '0.1.1'
+__version__ = '1.0.2'
 __copyright__ = 'written with <3 by Micha Grandel'
 __license__ = 'Apache License, Version 2.0'
 __contact__ = 'http://github.com/michagrandel'
 
 
-if __name__ == '__main__':
-
-    project = Project()
+def main():
+    project = Project(
+        version='1.0.2',
+        status='Alpha Version',
+        description='Initialize a python project'
+    ),
     directories = {
         'mandatory': {
             project.name,
@@ -108,10 +111,14 @@ if __name__ == '__main__':
 
     # generate requirements.txt and Readme.rst (for PyPI)
     project.generate_requirements()
-    Project.convert('Readme.md')
+    project.convert('Readme.md')
 
     # build project
-    Project.build('source')
-    Project.build()
+    project.build('source')
+    project.build()
 
     project.exclude(['dist', 'docs/build', 'build'])
+
+
+if __name__ == '__main__':
+    main()

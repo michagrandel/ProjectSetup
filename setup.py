@@ -22,7 +22,7 @@
 #                     Instagram:       @michagrandel
 #                     -----------------------------------------------------------------
 #
-#                     Copyright 2018 Micha Grandel
+#                     Copyright 2018 
 #
 #                     Licensed under the Apache License, Version 2.0 (the 'License');
 #                     you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@
 #                     -----------------------------------------------------------------
 #                     @formatter:on
 
-"""ProjectSetup - describe your project
+"""ProjectSetup
 
 A setuptools based setup module.
 
@@ -51,12 +51,15 @@ from __future__ import unicode_literals, print_function
 # To use a consistent encoding
 from io import open
 import os
+import sys
+import platform
+import shutil
+from distutils.dir_util import copy_tree
 
 # Always prefer setuptools over distutils
 try:
     from setuptools import setup, find_packages
-
-    packages = find_packages(exclude=['contrib', 'docs', 'tests'])
+    packages = find_packages(exclude=['contrib', 'docs', 'test', 'build', 'dist', 'venv', 'script'])
 except ImportError:
     from distutils.core import setup
     from pkgutil import walk_packages
@@ -68,13 +71,13 @@ except ImportError:
         """
         replacement for setuptools find_packages
 
-        :param path:
+        :param path: start search
         :param prefix:
 
         :return:
         """
         yield prefix
-        prefix = prefix + "."
+        prefix += "."
         for _, name, ispkg in walk_packages(path, prefix):
             if ispkg:
                 yield name
@@ -82,20 +85,72 @@ except ImportError:
 
     packages = list(find_packages(ProjectSetup.__path__, ProjectSetup.__name__))
 
+
+try:
+    import array
+except ImportError:
+    array = False
+
+try:
+    from six import PY3
+except ImportError:
+    PY3 = sys.version_info[0] == 3
+
+# import some windows related packages to enable AppDirs class
+try:
+    if PY3:
+        import winreg as _winreg
+    else:
+        import _winreg
+except ImportError:
+    _winreg = False
+
+try:
+    from win32com.shell import shellcon, shell
+    winshell = True
+except ImportError:
+    winshell = False
+    shell = False
+
+try:
+    import ctypes
+except ImportError:
+    ctypes = False
+
+try:
+    import win32api
+except ImportError:
+    win32api = False
+
+try:
+    import win32con
+except ImportError:
+    win32con = False
+
+try:
+    from com.sun import jna
+    from com.sun.jna.platform import win32
+except ImportError:
+    jna = False
+
+
 __status__ = 'planing'
 __author__ = 'Micha Grandel'
+__version__ = '1.0.2'
 __maintainer__ = 'Micha Grandel'
-__version__ = '0.1.1'
 __copyright__ = 'written with <3 by Micha Grandel'
 __license__ = 'Apache 2.0 license'
 __contact__ = 'talk@michagrandel.de'
 __maintainer_contact__ = 'talk@michagrandel.de'
 
-here = os.path.abspath(os.path.dirname(__file__))
-
+project_directory = os.path.dirname(os.path.abspath(__file__))
+project_name = os.path.basename(project_directory)
+assert project_name == 'ProjectSetup', 'Wrong name.'
 # Get the long description from the README file
-with open(os.path.join(here, 'Readme.rst'), encoding='utf-8') as f:
+with open(os.path.join(project_directory, 'Readme.rst'), encoding='utf-8') as f:
     long_description = f.read()
+if PY3:
+    unicode = str
 
 
 def requirements(category='install'):
@@ -124,395 +179,625 @@ def requirements(category='install'):
     return content
 
 
-# DATA
+def status(s):
+    if s.lower() in ('planing', 'planning'):
+        return 'Development Status :: 1 - Planning'
+    if s.lower() in ('pre-alpha'):
+        return 'Development Status :: 2 - Pre-Alpha'
+    if s.lower().startswith('alpha'):
+        return 'Development Status :: 3 - Alpha'
+    if s.lower().startswith('beta'):
+        return 'Development Status :: 4 - Beta'
+    if s.lower().startswith('production') or __status__.lower().startswith('stable'):
+        return 'Development Status :: 5 - Production/Stable'
+    if s.lower().startswith('mature'):
+        return 'Development Status :: 6 - Mature'
+    if s.lower().startswith('inactive'):
+        return 'Development Status :: 7 - Inactive'
+
+
+class AppDirs(object):
+    """Convenience wrapper for getting application dirs."""
+    def __init__(self, appname=None, appauthor=None, version=None, roaming=False, multipath=False):
+        self.appname = appname
+        self.appauthor = appauthor
+        self.version = version
+        self.roaming = roaming
+        self.multipath = multipath
+
+        # get platform
+        if sys.platform.startswith('java'):
+            os_name = platform.java_ver()[3][0]
+            if os_name.startswith('Windows'):  # "Windows XP", "Windows 7", etc.
+                self.system = 'win32'
+            elif os_name.startswith('Mac'):  # "Mac OS X", etc.
+                self.system = 'darwin'
+            else:  # "Linux", "SunOS", "FreeBSD", etc.
+                # Setting this to "linux2" is not ideal, but only Windows or Mac
+                # are actually checked for and the rest of the module expects
+                # *sys.platform* style strings.
+                self.system = 'linux2'
+        else:
+            self.system = sys.platform
+
+        # on windows, import platform specific packages
+        if self.system == "win32":
+            try:
+                import win32com.shell
+                self._get_win_folder = AppDirs._get_win_folder_with_pywin32
+            except ImportError:
+                try:
+                    from ctypes import windll
+                    self._get_win_folder = AppDirs._get_win_folder_with_ctypes
+                except ImportError:
+                    try:
+                        import com.sun.jna
+                        self._get_win_folder = AppDirs._get_win_folder_with_jna
+                    except ImportError:
+                        self._get_win_folder = AppDirs._get_win_folder_from_registry
+
+
+    @property
+    def user_data_dir(self):
+        """
+        Return full path to the user-specific data dir for this application.
+        """
+        appauthor = self.appauthor
+        if self.system == "win32":
+            if appauthor is None:
+                appauthor = self.appname
+            const = self.roaming and "CSIDL_APPDATA" or "CSIDL_LOCAL_APPDATA"
+            try:
+                path = os.path.normpath(self._get_win_folder(const))
+            except NotImplementedError:
+                path = os.path.expanduser('~/bin')
+            if self.appname:
+                if appauthor is not False:
+                    path = os.path.join(path, appauthor, self.appname)
+                else:
+                    path = os.path.join(path, self.appname)
+        elif self.system == 'darwin':
+            path = os.path.expanduser('~/Library/Application Support/')
+            if self.appname:
+                path = os.path.join(path, self.appname)
+        else:
+            path = os.getenv('XDG_DATA_HOME', os.path.expanduser("~/.local/share"))
+            if self.appname:
+                path = os.path.join(path, self.appname)
+        if self.appname and self.version:
+            path = os.path.join(path, self.version)
+        return path
+
+
+    @property
+    def site_data_dir(self):
+        """Return full path to the user-shared data dir for this application.
+
+        "appname" is the name of application.
+            If None, just the system directory is returned.
+        "appauthor" (only used on Windows) is the name of the
+            appauthor or distributing body for this application. Typically
+            it is the owning company name. This falls back to appname. You may
+            pass False to disable it.
+        "version" is an optional version path element to append to the
+            path. You might want to use this if you want multiple versions
+            of your app to be able to run independently. If used, this
+            would typically be "<major>.<minor>".
+            Only applied when appname is present.
+        "multipath" is an optional parameter only applicable to *nix
+            which indicates that the entire list of data dirs should be
+            returned. By default, the first item from XDG_DATA_DIRS is
+            returned, or '/usr/local/share/<AppName>',
+            if XDG_DATA_DIRS is not set
+
+        Typical site data directories are:
+            Mac OS X:   /Library/Application Support/<AppName>
+            Unix:       /usr/local/share/<AppName> or /usr/share/<AppName>
+            Win XP:     C:\Documents and Settings\All Users\Application Data\<AppAuthor>\<AppName>
+            Vista:      (Fail! "C:\ProgramData" is a hidden *system* directory on Vista.)
+            Win 7:      C:\ProgramData\<AppAuthor>\<AppName>   # Hidden, but writeable on Win 7.
+
+        For Unix, this is using the $XDG_DATA_DIRS[0] default.
+
+        WARNING: Do not use this on Windows. See the Vista-Fail note above for why.
+        """
+        appauthor = self.appauthor
+        appname = self.appname
+
+        if self.system == "win32":
+            if appauthor is None:
+                appauthor = appname
+            try:
+                path = os.path.normpath(self._get_win_folder("CSIDL_COMMON_APPDATA"))
+            except NotImplementedError:
+                path = os.path.expanduser('~/bin')
+            if appname:
+                if appauthor is not False:
+                    path = os.path.join(path, appauthor, appname)
+                else:
+                    path = os.path.join(path, appname)
+        elif self.system == 'darwin':
+            path = os.path.expanduser('/Library/Application Support')
+            if appname:
+                path = os.path.join(path, appname)
+        else:
+            # XDG default for $XDG_DATA_DIRS
+            # only first, if multipath is False
+            path = os.getenv('XDG_DATA_DIRS', os.pathsep.join(['/usr/local/share', '/usr/share']))
+            pathlist = [os.path.expanduser(x.rstrip(os.sep)) for x in path.split(os.pathsep)]
+            if appname:
+                if self.version:
+                    appname = os.path.join(appname, self.version)
+                pathlist = [os.sep.join([x, appname]) for x in pathlist]
+
+            if self.multipath:
+                path = os.pathsep.join(pathlist)
+            else:
+                path = pathlist[0]
+            return path
+
+        if appname and self.version:
+            path = os.path.join(path, self.version)
+        return path
+
+
+    @property
+    def user_config_dir(self):
+        """Return full path to the user-specific config dir for this application.
+
+            "appname" is the name of application.
+                If None, just the system directory is returned.
+            "appauthor" (only used on Windows) is the name of the
+                appauthor or distributing body for this application. Typically
+                it is the owning company name. This falls back to appname. You may
+                pass False to disable it.
+            "version" is an optional version path element to append to the
+                path. You might want to use this if you want multiple versions
+                of your app to be able to run independently. If used, this
+                would typically be "<major>.<minor>".
+                Only applied when appname is present.
+            "roaming" (boolean, default False) can be set True to use the Windows
+                roaming appdata directory. That means that for users on a Windows
+                network setup for roaming profiles, this user data will be
+                sync'd on login. See
+                <http://technet.microsoft.com/en-us/library/cc766489(WS.10).aspx>
+                for a discussion of issues.
+
+        Typical user config directories are:
+            Mac OS X:               ~/Library/Preferences/<AppName>
+            Unix:                   ~/.config/<AppName>     # or in $XDG_CONFIG_HOME, if defined
+            Win *:                  same as user_data_dir
+
+        For Unix, we follow the XDG spec and support $XDG_CONFIG_HOME.
+        That means, by default "~/.config/<AppName>".
+        """
+        if self.system == "win32":
+            path = self.user_data_dir()
+        elif self.system == 'darwin':
+            path = os.path.expanduser('~/Library/Preferences/')
+            if self.appname:
+                path = os.path.join(path, self.appname)
+        else:
+            path = os.getenv('XDG_CONFIG_HOME', os.path.expanduser("~/.config"))
+            if self.appname:
+                path = os.path.join(path, self.appname)
+        if self.appname and self.version:
+            path = os.path.join(path, self.version)
+        return path
+
+
+    @property
+    def site_config_dir(self):
+        """Return full path to the user-shared data dir for this application.
+
+            "appname" is the name of application.
+                If None, just the system directory is returned.
+            "appauthor" (only used on Windows) is the name of the
+                appauthor or distributing body for this application. Typically
+                it is the owning company name. This falls back to appname. You may
+                pass False to disable it.
+            "version" is an optional version path element to append to the
+                path. You might want to use this if you want multiple versions
+                of your app to be able to run independently. If used, this
+                would typically be "<major>.<minor>".
+                Only applied when appname is present.
+            "multipath" is an optional parameter only applicable to *nix
+                which indicates that the entire list of config dirs should be
+                returned. By default, the first item from XDG_CONFIG_DIRS is
+                returned, or '/etc/xdg/<AppName>', if XDG_CONFIG_DIRS is not set
+
+        Typical site config directories are:
+            Mac OS X:   same as site_data_dir
+            Unix:       /etc/xdg/<AppName> or $XDG_CONFIG_DIRS[i]/<AppName> for each value in
+                        $XDG_CONFIG_DIRS
+            Win *:      same as site_data_dir
+            Vista:      (Fail! "C:\ProgramData" is a hidden *system* directory on Vista.)
+
+        For Unix, this is using the $XDG_CONFIG_DIRS[0] default, if multipath=False
+
+        WARNING: Do not use this on Windows. See the Vista-Fail note above for why.
+        """
+        appname = self.appname
+        if self.system == 'win32':
+            path = self.site_data_dir()
+            if appname and self.version:
+                path = os.path.join(path, self.version)
+        elif self.system == 'darwin':
+            path = os.path.expanduser('/Library/Preferences')
+            if appname:
+                path = os.path.join(path, appname)
+        else:
+            # XDG default for $XDG_CONFIG_DIRS
+            # only first, if multipath is False
+            path = os.getenv('XDG_CONFIG_DIRS', '/etc/xdg')
+            pathlist = [os.path.expanduser(x.rstrip(os.sep)) for x in path.split(os.pathsep)]
+            if appname:
+                if self.version:
+                    appname = os.path.join(appname, self.version)
+                pathlist = [os.sep.join([x, appname]) for x in pathlist]
+
+            if self.multipath:
+                path = os.pathsep.join(pathlist)
+            else:
+                path = pathlist[0]
+        return path
+
+
+    @property
+    def user_cache_dir(self):
+        """Return full path to the user-specific cache dir for this application."""
+        opinion = True
+        appauthor = self.appauthor
+        if self.system == "win32":
+            if appauthor is None:
+                appauthor = self.appname
+            try:
+                path = os.path.normpath(self._get_win_folder("CSIDL_LOCAL_APPDATA"))
+            except NotImplementedError:
+                path = os.path.expanduser('~/bin')
+            if self.appname:
+                if appauthor is not False:
+                    path = os.path.join(path, appauthor, self.appname)
+                else:
+                    path = os.path.join(path, self.appname)
+                if opinion:
+                    path = os.path.join(path, "Cache")
+        elif self.system == 'darwin':
+            path = os.path.expanduser('~/Library/Caches')
+            if self.appname:
+                path = os.path.join(path, self.appname)
+        else:
+            path = os.getenv('XDG_CACHE_HOME', os.path.expanduser('~/.cache'))
+            if self.appname:
+                path = os.path.join(path, self.appname)
+        if self.appname and self.version:
+            path = os.path.join(path, self.version)
+        return path
+
+
+    @property
+    def user_state_dir(self):
+        """Return full path to the user-specific state dir for this application.
+
+            "appname" is the name of application.
+                If None, just the system directory is returned.
+            "appauthor" (only used on Windows) is the name of the
+                appauthor or distributing body for this application. Typically
+                it is the owning company name. This falls back to appname. You may
+                pass False to disable it.
+            "version" is an optional version path element to append to the
+                path. You might want to use this if you want multiple versions
+                of your app to be able to run independently. If used, this
+                would typically be "<major>.<minor>".
+                Only applied when appname is present.
+            "roaming" (boolean, default False) can be set True to use the Windows
+                roaming appdata directory. That means that for users on a Windows
+                network setup for roaming profiles, this user data will be
+                sync'd on login. See
+                <http://technet.microsoft.com/en-us/library/cc766489(WS.10).aspx>
+                for a discussion of issues.
+
+        Typical user state directories are:
+            Mac OS X:  same as user_data_dir
+            Unix:      ~/.local/state/<AppName>   # or in $XDG_STATE_HOME, if defined
+            Win *:     same as user_data_dir
+
+        For Unix, we follow this Debian proposal <https://wiki.debian.org/XDGBaseDirectorySpecification#state>
+        to extend the XDG spec and support $XDG_STATE_HOME.
+
+        That means, by default "~/.local/state/<AppName>".
+        """
+        if self.system in ["win32", "darwin"]:
+            path = self.user_data_dir()  # no version number!
+        else:
+            path = os.getenv('XDG_STATE_HOME', os.path.expanduser("~/.local/state"))
+            if self.appname:
+                path = os.path.join(path, self.appname)
+        if self.appname and self.version:
+            path = os.path.join(path, self.version)
+        return path
+
+
+    @property
+    def user_log_dir(self):
+        """Return full path to the user-specific log dir for this application."""
+        opinion = True
+        version = self.version
+        if self.system == "darwin":
+            path = os.path.join(os.path.expanduser('~/Library/Logs'),self.appname)
+        elif self.system == "win32":
+            path = self.user_data_dir
+            version = False
+            if opinion:
+                path = os.path.join(path, "Logs")
+        else:
+            path = self.user_cache_dir
+            version = False
+            if opinion:
+                path = os.path.join(path, "log")
+        if self.appname and version:
+            path = os.path.join(path, self.version)
+        return path
+
+
+    @staticmethod
+    def _get_win_folder_from_registry(csidl_name):
+        """
+        return location of AppData folder on this machine.
+
+        This is implemented for windows only.
+        This implementation uses windows registry.
+
+        This is a fallback technique at best. I'm not sure if using the
+        registry for this guarantees us the correct answer for all CSIDL_*
+        names.
+
+        :param csidl_name: AppData vs Common AppData vs Local AppData
+        :return: path of AppData folder
+        """
+        if _winreg:
+            shell_folder_name = {
+                "CSIDL_APPDATA": "AppData",
+                "CSIDL_COMMON_APPDATA": "Common AppData",
+                "CSIDL_LOCAL_APPDATA": "Local AppData",
+            }[csidl_name]
+
+            key = _winreg.OpenKey(
+                _winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders"
+            )
+            dir, type = _winreg.QueryValueEx(key, shell_folder_name)
+            return dir
+        else:
+            raise NotImplementedError('Cannot get windows appdata folder from registry')
+
+
+    @staticmethod
+    def _get_win_folder_with_pywin32(csidl_name):
+        """
+        return location of AppData folder on this machine.
+
+        This is implemented for windows only.
+        This implementation uses pywin32.
+
+        :param csidl_name: AppData vs Common AppData vs Local AppData
+        :return: path of AppData folder
+        """
+        if shell and shellcon:
+            dir = shell.SHGetFolderPath(0, getattr(shellcon, csidl_name), 0, 0)
+            # Try to make this a unicode path because SHGetFolderPath does
+            # not return unicode strings when there is unicode data in the
+            # path.
+            try:
+                dir = unicode(dir)
+
+                # Downgrade to short path name if have highbit chars. See
+                # <http://bugs.activestate.com/show_bug.cgi?id=85099>.
+                has_high_char = False
+                for c in dir:
+                    if ord(c) > 255:
+                        has_high_char = True
+                        break
+                if has_high_char:
+                    if win32api:
+                        dir = win32api.GetShortPathName(dir)
+            except UnicodeError:
+                pass
+            return dir
+        else:
+            raise NotImplementedError('Cannot get windows appdata folder with pywin32')
+
+
+    @staticmethod
+    def _get_win_folder_with_ctypes(csidl_name):
+        """
+        return location of AppData folder on this machine.
+
+        This is implemented for windows only.
+        This implementation uses ctypes.
+
+        :param csidl_name: AppData vs Common AppData vs Local AppData
+        :return: path of AppData folder
+        """
+        if ctypes:
+            csidl_const = {
+                "CSIDL_APPDATA": 26,
+                "CSIDL_COMMON_APPDATA": 35,
+                "CSIDL_LOCAL_APPDATA": 28,
+            }[csidl_name]
+
+            buf = ctypes.create_unicode_buffer(1024)
+            ctypes.windll.shell32.SHGetFolderPathW(None, csidl_const, None, 0, buf)
+
+            # Downgrade to short path name if have highbit chars. See
+            # <http://bugs.activestate.com/show_bug.cgi?id=85099>.
+            has_high_char = False
+            for c in buf:
+                if ord(c) > 255:
+                    has_high_char = True
+                    break
+            if has_high_char:
+                buf2 = ctypes.create_unicode_buffer(1024)
+                if ctypes.windll.kernel32.GetShortPathNameW(buf.value, buf2, 1024):
+                    buf = buf2
+
+            return buf.value
+        else:
+            raise NotImplementedError('Cannot get windows appdata folder with ctypes')
+
+
+    @staticmethod
+    def _get_win_folder_with_jna(csidl_name):
+        """
+        return location of AppData folder on this machine.
+
+        This is implemented for windows only.
+        This implementation uses JNA.
+
+        :param csidl_name: AppData vs Common AppData vs Local AppData
+        :return: path of AppData folder
+        """
+        if jna and win32 and array:
+            buf_size = win32.WinDef.MAX_PATH * 2
+            buf = array.zeros('c', buf_size)
+            shell = win32.Shell32.INSTANCE
+            shell.SHGetFolderPath(None, getattr(win32.ShlObj, csidl_name), None, win32.ShlObj.SHGFP_TYPE_CURRENT, buf)
+            dir = jna.Native.toString(buf.tostring()).rstrip("\0")
+
+            # Downgrade to short path name if have highbit chars. See
+            # <http://bugs.activestate.com/show_bug.cgi?id=85099>.
+            has_high_char = False
+            for c in dir:
+                if ord(c) > 255:
+                    has_high_char = True
+                    break
+            if has_high_char:
+                buf = array.zeros('c', buf_size)
+                kernel = win32.Kernel32.INSTANCE
+                if kernel.GetShortPathName(dir, buf, buf_size):
+                    dir = jna.Native.toString(buf.tostring()).rstrip("\0")
+
+            return dir
+        else:
+            raise NotImplementedError('Cannot get windows appdata folder with JNA')
+
+
+appdirs = AppDirs(appname=project_name, appauthor=False, roaming=True)
+
+
 setup(
-    # This is the name of your project. The first time you publish this
-    # package, this name will be registered for you. It will determine how
-    # users can install this project, e.g.:
-    #
-    # $ pip install sampleproject
-    #
-    # And where it will live on PyPI: https://pypi.org/project/sampleproject/
-    #
-    # There are some restrictions on what makes a valid project name
-    # specification here:
-    # https://packaging.python.org/specifications/core-metadata/#name
-    name='ProjectSetup',  # Required
-
-    # Versions should comply with PEP 440:
-    # https://www.python.org/dev/peps/pep-0440/
-    #
-    # For a discussion on single-sourcing the version across setup.py and the
-    # project code, see
-    # https://packaging.python.org/en/latest/single_source_version.html
+    name=project_name.lower(),  # Required
     version=__version__,  # Required
-
-    # This is a one-line description or tagline of what your project does. This
-    # corresponds to the "Summary" metadata field:
-    # https://packaging.python.org/specifications/core-metadata/#summary
     description='describe your project',  # Required
-
-    # This is an optional longer description of your project that represents
-    # the body of text which users will see when they visit PyPI.
-    #
-    # Often, this is the same as your README, so you can just read it in from
-    # that file directly (as we have already done above)
-    #
-    # This field corresponds to the "Description" metadata field:
-    # https://packaging.python.org/specifications/core-metadata/#description-optional
     long_description=long_description,  # Optional
-
-    # This should be a valid link to your project's main homepage.
-    #
-    # This field corresponds to the "Home-Page" metadata field:
-    # https://packaging.python.org/specifications/core-metadata/#home-page-optional
-    url='https://github.com/michagrandel/ProjectSetup',  # Optional
-
-    # This should be your name or the name of the organization which owns the
-    # project.
+    url='https://github.com/michagrandel/{}'.format(project_name),  # Optional
     author=__author__,  # Optional
-
-    # This should be a valid email address corresponding to the author listed
-    # above.
     author_email=__contact__,  # Optional
-
-    # maintainer info
     maintainer=__maintainer__,  # Optional
     maintainer_email=__maintainer_contact__,  # Optional
+    keywords='python',  # Optional
+    entry_points={
+        'console_scripts': [
+            'quickstart = script.quickstart:main',
+        ],
+        #
+        # 'gui_scripts': [
+        #     'baz = my_package_gui:start_func',
+        # ]
+        #
+    },
 
-    # Classifiers help users find your project by categorizing it.
-    #
-    # For a list of valid classifiers, see
-    # https://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers=[
-        # Optional
-        # How mature is this project? Common values are
-        # Valid Values:
-        #
-        'Development Status :: 1 - Planning',
-        # 'Development Status :: 2 - Pre-Alpha',
-        # 'Development Status :: 3 - Alpha',
-        # 'Development Status :: 4 - Beta',
-        # 'Development Status :: 5 - Production/Stable',
-        # 'Development Status :: 6 - Mature',
-        # 'Development Status :: 7 - Inactive',
-
-        # Indicate who your project is intended for
-        # Valid Values:
-        #
-        # 'Intended Audience :: Customer Service',
-        # 'Intended Audience :: Developers',
-        # 'Intended Audience :: Education',
-        # 'Intended Audience :: End Users/Desktop',
-        # 'Intended Audience :: Financial and Insurance Industry',
-        # 'Intended Audience :: Healthcare Industry',
-        # 'Intended Audience :: Information Technology',
-        # 'Intended Audience :: Legal Industry',
-        # 'Intended Audience :: Manufacturing',
-        # 'Intended Audience :: Other Audience',
-        # 'Intended Audience :: Religion',
-        # 'Intended Audience :: Science/Research',
-        # 'Intended Audience :: System Administrators',
-        # 'Intended Audience :: Telecommunications Industry',
-
-        # Valid Values:
-        #
-        # 'Topic :: Artistic Software',
-        # 'Topic :: Communications',
-        # 'Topic :: Communications :: Chat',
-        # 'Topic :: Communications :: Chat :: Internet Relay Chat',
-        # 'Topic :: Communications :: Email',
-        # 'Topic :: Communications :: Email :: Address Book',
-        # 'Topic :: Communications :: Email :: Email Clients (MUA)',
-        # 'Topic :: Communications :: Email :: Filters',
-        # 'Topic :: Communications :: Email :: Mailing List Servers',
-        # 'Topic :: Communications :: Email :: Mail Transport Agents',
-        # 'Topic :: Database',
-        # 'Topic :: Desktop Environment',
-        # 'Topic :: Desktop Environment :: File Managers',
-        # 'Topic :: Desktop Environment :: Gnome',
-        # 'Topic :: Desktop Environment :: Screen Savers',
-        # 'Topic :: Documentation',
-        # 'Topic :: Documentation :: Sphinx',
-        # 'Topic :: Education',
-        # 'Topic :: Education :: Testing',
-        # 'Topic :: Games/Entertainment',
-        # 'Topic :: Games/Entertainment :: Arcade',
-        # 'Topic :: Games/Entertainment :: Board Games',
-        # 'Topic :: Games/Entertainment :: First Person Shooters',
-        # 'Topic :: Games/Entertainment :: Fortune Cookies',
-        # 'Topic :: Games/Entertainment :: Multi-User Dungeons (MUD)',
-        # 'Topic :: Games/Entertainment :: Puzzle Games',
-        # 'Topic :: Games/Entertainment :: Real Time Strategy',
-        # 'Topic :: Games/Entertainment :: Role-Playing',
-        # 'Topic :: Games/Entertainment :: Side-Scrolling/Arcade Games',
-        # 'Topic :: Games/Entertainment :: Simulation',
-        # 'Topic :: Games/Entertainment :: Turn Based Strategy',
-        # 'Topic :: Internet',
-        # 'Topic :: Internet :: WWW/HTTP',
-        # 'Topic :: Internet :: WWW/HTTP :: Browsers',
-        # 'Topic :: Internet :: WWW/HTTP :: Dynamic Content',
-        # 'Topic :: Internet :: WWW/HTTP :: Dynamic Content :: CGI Tools/Libraries',
-        # 'Topic :: Internet :: WWW/HTTP :: Dynamic Content :: Content Management System',
-        # 'Topic :: Internet :: WWW/HTTP :: Dynamic Content :: Wiki',
-        # 'Topic :: Internet :: WWW/HTTP :: Indexing/Search',
-        # 'Topic :: Internet :: WWW/HTTP :: Site Management',
-        # 'Topic :: Internet :: WWW/HTTP :: Site Management :: Link Checking',
-        # 'Topic :: Internet :: WWW/HTTP :: WSGI',
-        # 'Topic :: Internet :: WWW/HTTP :: WSGI :: Application',
-        # 'Topic :: Internet :: WWW/HTTP :: WSGI :: Middleware',
-        # 'Topic :: Multimedia',
-        # 'Topic :: Multimedia :: Graphics',
-        # 'Topic :: Multimedia :: Graphics :: 3D Modeling',
-        # 'Topic :: Multimedia :: Graphics :: 3D Rendering',
-        # 'Topic :: Multimedia :: Graphics :: Capture',
-        # 'Topic :: Multimedia :: Graphics :: Capture :: Digital Camera',
-        # 'Topic :: Multimedia :: Graphics :: Capture :: Scanners',
-        # 'Topic :: Multimedia :: Graphics :: Capture :: Screen Capture',
-        # 'Topic :: Multimedia :: Graphics :: Editors',
-        # 'Topic :: Multimedia :: Graphics :: Editors :: Raster-Based',
-        # 'Topic :: Multimedia :: Graphics :: Editors :: Vector-Based',
-        # 'Topic :: Multimedia :: Graphics :: Graphics Conversion',
-        # 'Topic :: Multimedia :: Graphics :: Presentation',
-        # 'Topic :: Multimedia :: Graphics :: Viewers',
-        # 'Topic :: Multimedia :: Sound/Audio',
-        # 'Topic :: Multimedia :: Sound/Audio :: Capture/Recording',
-        # 'Topic :: Multimedia :: Sound/Audio :: Conversion',
-        # 'Topic :: Multimedia :: Sound/Audio :: Speech',
-        # 'Topic :: Multimedia :: Video',
-        # 'Topic :: Multimedia :: Video :: Capture',
-        # 'Topic :: Multimedia :: Video :: Conversion',
-        # 'Topic :: Multimedia :: Video :: Display',
-        # 'Topic :: Multimedia :: Video :: Non-Linear Editor',
-        # 'Topic :: Office/Business',
-        # 'Topic :: Office/Business :: Financial :: Spreadsheet',
-        # 'Topic :: Office/Business :: Office Suites',
-        # 'Topic :: Other/Nonlisted Topic',
-        # 'Topic :: Printing',
-        # 'Topic :: Religion',
-        # 'Topic :: Scientific/Engineering',
-        # 'Topic :: Scientific/Engineering :: Artificial Intelligence',
-        # 'Topic :: Scientific/Engineering :: Artificial Life',
-        # 'Topic :: Scientific/Engineering :: Human Machine Interfaces',
-        # 'Topic :: Scientific/Engineering :: Image Recognition',
-        # 'Topic :: Scientific/Engineering :: Visualization',
-        # 'Topic :: Security',
-        # 'Topic :: Security :: Cryptography',
-        # 'Topic :: Software Development :: Interpreters',
-        # 'Topic :: Software Development :: Libraries :: Python Modules',
-        # 'Topic :: Software Development :: User Interfaces',
-        # 'Topic :: Software Development :: Version Control :: Git',
-        # 'Topic :: Software Development :: Widget Sets',
-        # 'Topic :: System',
-        # 'Topic :: System :: Archiving',
-        # 'Topic :: System :: Archiving :: Backup',
-        # 'Topic :: System :: Archiving :: Compression',
-        # 'Topic :: System :: Archiving :: Mirroring',
-        # 'Topic :: System :: Archiving :: Packaging',
-        # 'Topic :: System :: Installation/Setup',
-        # 'Topic :: System :: Logging',
-        # 'Topic :: System :: Monitoring',
-        # 'Topic :: System :: Networking',
-        # 'Topic :: System :: Software Distribution',
-        # 'Topic :: System :: Systems Administration',
-        # 'Topic :: System :: System Shells',
-        # 'Topic :: Terminals',
-        # 'Topic :: Text Editors',
-        # 'Topic :: Text Editors :: Integrated Development Environments (IDE)',
-        # 'Topic :: Text Processing',
-        # 'Topic :: Text Processing :: Markup',
-        # 'Topic :: Text Processing :: Markup :: HTML',
-        # 'Topic :: Text Processing :: Markup :: LaTeX',
-        # 'Topic :: Text Processing :: Markup :: XML',
-        # 'Topic :: Utilities',
-
-        # Pick your license as you wish
-        #
-        # Valid Values:
-        #
-        # 'License :: Free For Educational Use',
-        # 'License :: Free For Home Use',
-        # 'License :: Free for non-commercial use',
-        # 'License :: Freely Distributable',
-        # 'License :: Free To Use But Restricted',
-        # 'License :: Freeware',
-        # 'License :: OSI Approved',
+        status(__status__),
+        'Intended Audience :: Developers',
         'License :: OSI Approved :: Apache Software License',
-        # 'License :: OSI Approved :: BSD License',
-        # 'License :: OSI Approved :: European Union Public Licence 1.0 (EUPL 1.0)',
-        # 'License :: OSI Approved :: European Union Public Licence 1.1 (EUPL 1.1)',
-        # 'License :: OSI Approved :: GNU Affero General Public License v3',
-        # 'License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)',
-        # 'License :: OSI Approved :: GNU Free Documentation License (FDL)',
-        # 'License :: OSI Approved :: GNU General Public License (GPL)',
-        # 'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
-        # 'License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)',
-        # 'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
-        # 'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
-        # 'License :: OSI Approved :: GNU Lesser General Public License v2 (LGPLv2)',
-        # 'License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)',
-        # 'License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)',
-        # 'License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)',
-        # 'License :: OSI Approved :: MIT License',
-        # 'License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)',
-        # 'License :: OSI Approved :: Python Software Foundation License',
-        # 'License :: OSI Approved :: Qt Public License (QPL)',
-
-        # 'License :: Other/Proprietary License',
-        #
-        # Valid Values:
-        #
-        # Specify the Python versions you support here. In particular, ensure
-        # that you indicate whether you support Python 2, Python 3 or both.
         'Programming Language :: Python',
         'Programming Language :: Python :: 2',
-        # 'Programming Language :: Python :: 2.3',
-        # 'Programming Language :: Python :: 2.4',
-        # 'Programming Language :: Python :: 2.5',
-        # 'Programming Language :: Python :: 2.6',
         'Programming Language :: Python :: 2.7',
-        # 'Programming Language :: Python :: 2 :: Only',
         'Programming Language :: Python :: 3',
-        # 'Programming Language :: Python :: 3.0',
-        # 'Programming Language :: Python :: 3.1',
-        # 'Programming Language :: Python :: 3.2',
-        # 'Programming Language :: Python :: 3.3',
-        # 'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
-        # 'Programming Language :: Python :: 3.7',
-        # 'Programming Language :: Python :: 3 :: Only',
-
-        # Specify the Operating System on which your software runs
-        #
-        # Valid Values:
-        #
-        # 'Operating System :: Android',
-        # 'Operating System :: iOS',
-        # 'Operating System :: MacOS',
         # 'Operating System :: MacOS :: MacOS X',
         'Operating System :: Microsoft',
-        # 'Operating System :: Microsoft :: MS-DOS',
         'Operating System :: Microsoft :: Windows',
         'Operating System :: Microsoft :: Windows :: Windows 10',
         'Operating System :: Microsoft :: Windows :: Windows 7',
         'Operating System :: Microsoft :: Windows :: Windows 8',
         'Operating System :: Microsoft :: Windows :: Windows 8.1',
         'Operating System :: OS Independent',
-        # 'Operating System :: Other OS',
-        # 'Operating System :: POSIX',
-        # 'Operating System :: POSIX :: BSD',
-        # 'Operating System :: POSIX :: BSD :: FreeBSD',
         'Operating System :: POSIX :: Linux',
-        # 'Operating System :: POSIX :: Other',
-
-        # Specify the language of your application
-        #
-        # Valid Values:
-        #
-        # 'Natural Language :: Afrikaans',
-        # 'Natural Language :: Arabic',
-        # 'Natural Language :: Bengali',
-        # 'Natural Language :: Bosnian',
-        # 'Natural Language :: Bulgarian',
-        # 'Natural Language :: Cantonese',
-        # 'Natural Language :: Catalan',
-        # 'Natural Language :: Chinese (Simplified)',
-        # 'Natural Language :: Chinese (Traditional)',
-        # 'Natural Language :: Croatian',
-        # 'Natural Language :: Czech',
-        # 'Natural Language :: Danish',
-        # 'Natural Language :: Dutch',
         'Natural Language :: English',
-        # 'Natural Language :: Esperanto',
-        # 'Natural Language :: Finnish',
-        # 'Natural Language :: French',
-        # 'Natural Language :: Galician',
-        # 'Natural Language :: German',
-        # 'Natural Language :: Greek',
-        # 'Natural Language :: Hebrew',
-        # 'Natural Language :: Hindi',
-        # 'Natural Language :: Hungarian',
-        # 'Natural Language :: Icelandic',
-        # 'Natural Language :: Indonesian',
-        # 'Natural Language :: Italian',
-        # 'Natural Language :: Japanese',
-        # 'Natural Language :: Javanese',
-        # 'Natural Language :: Korean',
-        # 'Natural Language :: Latin',
-        # 'Natural Language :: Latvian',
-        # 'Natural Language :: Macedonian',
-        # 'Natural Language :: Malay',
-        # 'Natural Language :: Marathi',
-        # 'Natural Language :: Norwegian',
-        # 'Natural Language :: Panjabi',
-        # 'Natural Language :: Persian',
-        # 'Natural Language :: Polish',
-        # 'Natural Language :: Portuguese',
-        # 'Natural Language :: Portuguese (Brazilian)',
-        # 'Natural Language :: Romanian',
-        # 'Natural Language :: Russian',
-        # 'Natural Language :: Serbian',
-        # 'Natural Language :: Slovak',
-        # 'Natural Language :: Slovenian',
-        # 'Natural Language :: Spanish',
-        # 'Natural Language :: Swedish',
-        # 'Natural Language :: Tamil',
-        # 'Natural Language :: Telugu',
-        # 'Natural Language :: Thai',
-        # 'Natural Language :: Turkish',
-        # 'Natural Language :: Ukranian',
-        # 'Natural Language :: Urdu',
-        # 'Natural Language :: Vietnamese',
     ],
 
-    # This field adds keywords for your project which will appear on the
-    # project page. What does your project relate to?
-    #
-    # Note that this is a string of words separated by whitespace, not a list.
-    keywords='python',  # Optional
-
-    # You can just specify package directories manually here if your project is
-    # simple. Or you can use find_packages().
-    #
-    # Alternatively, if you just want to distribute a single Python file, use
-    # the `py_modules` argument instead as follows, which will expect a file
-    # called `my_module.py` to exist:
-    #
-    #   py_modules=["my_module"],
-    #
     packages=packages,  # Required
-
-    # This field lists other packages that your project depends on to run.
-    # Any package you put here will be installed by pip when your project is
-    # installed, so they must be valid existing projects.
-    #
-    # For an analysis of "install_requires" vs pip's requirements files see:
-    # https://packaging.python.org/en/latest/requirements.html
     install_requires=requirements(),  # Optional
-
-    # List additional groups of dependencies here (e.g. development
-    # dependencies). Users will be able to install these using the "extras"
-    # syntax, for example:
-    #
-    #   $ pip install sampleproject[dev]
-    #
-    # Similar to `install_requires` above, these must be valid existing
-    # projects.
     extras_require={  # Optional
         'dev': requirements('dev'),
         'test': requirements('test'),
     },
 
-    # If there are data files included in your packages that need to be
-    # installed, specify them here.
-    #
-    # If using Python 2.6 or earlier, then these have to be included in
-    # MANIFEST.in as well.
-    #
-    # package_data = {  # Optional
-    #     'Backup': ['templates/*.html'],
+    # package_data={  # Optional
+    #     b'': [
+    #         b'templates/*', b'data/*', b'images/*', b'icons/*', b'sample data/*',
+    #         b'LC_MESSAGES/*', b'*.ts', b'*.strings', b'languages/*', b'*.pot', b'*.po', b'*.mo',
+    #         b'*.pro', b'*.pro.user', b'*.ui', b'*.qrc', b'*.qm', b'*.qml', b'*.rc', b'resources/*', b'ui/*',
+    #         b'*.zip', b'*.7z', b'*.z', b'*.bzip', b'*.tar', b'*.gz', b'*.tar.gz', b'*.bin',
+    #         b'*.txt', b'*.rst', b'*.md', b'*.xml',
+    #         b'*.conf', b'*.json', b'*.yml', b'*.yaml', b'*.ini', b'*.plist', b'*.csv', b'*.properties', b'*.jinja2',
+    #         b'*.xmp',
+    #         b'Makefile', b'*.bat', b'*.cmd', b'*.sh', b'*.ps1', b'*.lua',
+    #         b'*.html', b'*.css', b'*.js', b'*.pdf',
+    #         b'*.db', b'*.sql', b'*.sqlite'
+    #         b'*.otf', b'*.ttf', b'*.woff',
+    #         b'*.xpm', b'*.xbm', b'*.gif', b'*.ico',
+    #         b'*.jpg', b'*.jpeg', b'*.tga', b'*.tiff', b'*.png',
+    #         b'*.hdr', b'*.dng', b'*.exr', b'*.iff',
+    #         b'*.svg',
+    #         b'*.aiff', b'*.aif', b'*.mp3', b'*.m4a', b'*.ogg', b'*.oga',
+    #         b'*.mpeg', b'*.mp4', b'*.m4v', b'*.asf', b'*.webm', b'*.ogv',
+    #         b'*.sample', b'*.b64']
     # },
+
+    data_files = [
+        (os.path.join('share', project_name.lower(), '.templates'), [
+            'ProjectSetup/templates/.editorconfig',
+            'ProjectSetup/templates/.travis.yml',
+            'ProjectSetup/templates/__init__.py.jinja2',
+            'ProjectSetup/templates/CODE_OF_CONDUCT.md',
+            'ProjectSetup/templates/conf.py.jinja2',
+            'ProjectSetup/templates/Contributing.md.jinja2',
+            'ProjectSetup/templates/discover.py.jinja2',
+            'ProjectSetup/templates/How_to_install_Python_2.7.md',
+            'ProjectSetup/templates/index.rst.jinja2',
+            'ProjectSetup/templates/issue_template.md',
+            'ProjectSetup/templates/LICENSE',
+            'ProjectSetup/templates/LICENSE.txt',
+            'ProjectSetup/templates/make.bat.jinja2',
+            'ProjectSetup/templates/Makefile.jinja2',
+            'ProjectSetup/templates/PULL_REQUEST_TEMPLATE.md',
+            'ProjectSetup/templates/Readme.md.jinja2',
+            'ProjectSetup/templates/setup.py.jinja2',
+        ]),
+        # ('.templates', [
+        #     'ProjectSetup/templates/.editorconfig',
+        #     'ProjectSetup/templates/.travis.yml',
+        #     'ProjectSetup/templates/__init__.py.jinja2',
+        #     'ProjectSetup/templates/CODE_OF_CONDUCT.md',
+        #     'ProjectSetup/templates/conf.py.jinja2',
+        #     'ProjectSetup/templates/Contributing.md.jinja2',
+        #     'ProjectSetup/templates/discover.py.jinja2',
+        #     'ProjectSetup/templates/How_to_install_Python_2.7.md',
+        #     'ProjectSetup/templates/index.rst.jinja2',
+        #     'ProjectSetup/templates/issue_template.md',
+        #     'ProjectSetup/templates/LICENSE',
+        #     'ProjectSetup/templates/LICENSE.txt',
+        #     'ProjectSetup/templates/make.bat.jinja2',
+        #     'ProjectSetup/templates/Makefile.jinja2',
+        #     'ProjectSetup/templates/PULL_REQUEST_TEMPLATE.md',
+        #     'ProjectSetup/templates/Readme.md.jinja2',
+        #     'ProjectSetup/templates/setup.py.jinja2',
+        # ])
+    ],
 
     # Although 'package_data' is the preferred approach, in some case you may
     # need to place data files outside of your packages. See:
@@ -529,6 +814,8 @@ setup(
     # where X.Y is the version number of Python, for example 2.7.
     #
     # data_files = [
+    #     ('templates'), []),
+
     #     ('Backup API/0.1.0/openapi',
     #      [
     #         'openapi/v0.1.0/openapi.html',
@@ -540,19 +827,4 @@ setup(
     #         'templates/openapi.html'
     #      ])
     # ],  # Optional
-    #
-    # To provide executable scripts, use entry points in preference to the
-    # "scripts" keyword. Entry points provide cross-platform support and allow
-    # `pip` to create the appropriate form of executable for the target
-    # platform.
-    #
-    # For example, the following would provide a command called `sample` which
-    # executes the function `main` from this package when invoked:
-    #
-    # entry_points = {  # Optional
-    #    'console_scripts': [
-    #        'sample=script.py:main',
-    #    ],
-    # },
-    scripts=[os.path.join('script', f) for f in os.listdir('script')]
 )

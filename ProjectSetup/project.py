@@ -55,6 +55,7 @@ import os
 import jinja2
 from jinja2 import Environment, PackageLoader
 from pip.operations import freeze
+import logging
 import shutil
 
 try:
@@ -71,20 +72,12 @@ except ImportError:
             except ImportError:
                 import elementtree.ElementTree as etree
 
-__status__ = 'development'
-__author__ = 'Micha Grandel'
-__version__ = ''
-__copyright__ = 'written with <3 by Micha Grandel'
-__license__ = 'Apache License, Version 2.0'
-__contact__ = 'http://github.com/michagrandel'
-
-
 class Project(object):
     """
     initialize project files
     """
 
-    def __init__(self, name=None, path=None, **kwargs):
+    def __init__(self, name=None, path=None, description=None, logger=None, **kwargs):
         """
         initialize project settings
 
@@ -92,29 +85,50 @@ class Project(object):
         :param name: project name. default: basename of `path`
         :param kwargs: set metadata for the project, like version, status, author, etc.
         """
+        
+        self.logger = logging.getLogger(logger or "ProjectSetup.project:Project")
+        if not logger:
+            handler = logging.StreamHandler()
+            self.logger.setLevel(kwargs.get(b'loglevel', logging.INFO))
+            handler.setLevel(kwargs.get(b'loglevel', logging.INFO))
+            self.logger.addHandler(handler)
+
         self.path = path or os.path.abspath(os.getcwd())
         self.name = name or os.path.basename(self.path)
-
-        self.author_url = kwargs.get('url', 'https://github.com/michagrandel')
-        self.author = kwargs.get('author', 'Micha Grandel')
-        self.email = kwargs.get('email', 'talk@michagrandel.de')
-        self.version = kwargs.get('version', '0.1.0')
-        self.status = kwargs.get('status', 'planing')
-        self.copyright = kwargs.get('copyright', 'Micha Grandel')
-        self.year = kwargs.get('year', '2018')
-        self.company = kwargs.get('company', 'Unicorn')
-        self.url = 'https://github.com/michagrandel/{project}'.format(project=self.name)
-        self.maintainer = kwargs.get('maintainer', self.author)
-        self.maintainer_email = kwargs.get('maintainer_email', self.email)
-
-        self.template_env = Environment(
-            loader=PackageLoader(self.name),
-        )
-        self.templates = os.path.abspath(os.path.join(os.path.abspath(os.path.dirname(__file__)), '../template'))
-        print('Template in ' + self.templates)
         self.directories = list()
 
-        print('Update project "{project}":\nin Project path: {path}'.format(project=self.name, path=self.path))
+        self.description = description
+        self.license = kwargs.get(b'license', 'Apache 2.0')
+
+        self.author_url = kwargs.get(b'url', 'https://github.com/michagrandel')
+        self.author = kwargs.get(b'author', 'Micha Grandel')
+        self.email = kwargs.get(b'email', 'talk@michagrandel.de')
+        self.version = kwargs.get(b'version', '1.0.2')
+        self.status = kwargs.get(b'status', 'Planning')
+        self.copyright = kwargs.get(b'copyright', 'Micha Grandel')
+        self.year = kwargs.get(b'year', '2018')
+        self.company = kwargs.get(b'company', 'Unicorn')
+        self.url = 'https://github.com/michagrandel/{project}'.format(project=self.name)
+        self.maintainer = kwargs.get(b'maintainer', self.author)
+        self.maintainer_email = kwargs.get(b'maintainer_email', self.email)
+        self.pythonversions = kwargs.get(b'compatible', ('27', '35', '36', '37'))
+        self.platforms = \
+            kwargs.get(b'platforms', ('Cross', 'Windows 10', 'Windows 7', 'Ubuntu', 'CentOS', 'macOS', 'Linux'))
+        self.languages = kwargs.get(b'languages', ['English'])
+        self.logger.info("""\
+Initialize {s.name} in {s.path} ...
+  {s.description}
+  {s.year} by {s.author}, {s.email}
+  {s.license}
+  
+  {s.url}""".format(s=self))
+        self.add_directory(self.name)
+        with open(os.path.join(self.path, self.name, '__init__.py'), 'w') as f:
+            f.write('')
+
+        self.template_env = Environment(loader=PackageLoader(self.name), trim_blocks=True, lstrip_blocks=True)
+        self.templates = os.path.join(self.path, 'template')
+        self.logger.debug('Templates in ' + self.templates)
 
     def add_directory(self, name, mandatory=False):
         """
@@ -127,22 +141,22 @@ class Project(object):
         if name not in [d[0] for d in self.directories]:
             fullpath = os.path.normpath(os.path.join(self.path, name))
             self.directories.append((fullpath, mandatory))
-            print('"{path}" ... '.format(path=os.path.join(self.name, name)), end='')
+            self.logger.debug('"{path}" ... '.format(path=os.path.join(self.name, name)))
 
             create_directory = mandatory or not os.path.isfile(os.path.join(self.path, 'setup.py'))
             if create_directory:
                 try:
                     os.makedirs(fullpath)
-                    print('Done.')
+                    self.logger.debug('Done.')
                 except (OSError, IOError):
-                    print('Nothing to do.')
+                    self.logger.debug('Nothing to do.')
         return 0
 
     def create_from_template(self, file_name, template=None):
         """
-        create a file using a template
+        create a *file* using a *template*
 
-        :param file_name: name of resulting file, including path relative to project path
+        :param file_name: name of resulting file, including path (relative to project path)
         :param template: filename of template file, relative to template path
         :return: 0 on success, 1 on failure
         """
@@ -152,7 +166,7 @@ class Project(object):
         filename = os.path.basename(filepath)
         dirname = os.path.dirname(filepath)
         path = os.path.join(self.name, os.path.relpath(filepath, self.path))
-        print('"{filepath}" ... '.format(filepath=path), end='')
+        self.logger.debug('"{filepath}" ... '.format(filepath=path))
 
         if not os.path.isfile(filepath):
             try:
@@ -176,16 +190,21 @@ class Project(object):
                     project_name=self.name,
                     project_path=self.path,
                     project_url=self.author_url,
+                    project_description=self.description,
                     author=self.author,
                     author_email=self.email,
-                    maintainer=self.maintainer,
-                    maintainer_email=self.maintainer_email,
+                    # maintainer=self.maintainer,
+                    # maintainer_email=self.maintainer_email,
                     version=self.version,
                     status=self.status,
-                    copyright=self.copyright,
+                    copyright_holder=self.copyright,
                     company=self.company,
                     year=self.year,
-                    url=self.url
+                    url=self.url,
+                    license=self.license,
+                    pyversion=self.pythonversions,
+                    support=self.platforms,
+                    languages=self.languages
                 )
 
                 try:
@@ -197,7 +216,7 @@ class Project(object):
                     print('Could not write file.')
                     return 1
         else:
-            print('Nothing to do.')
+            self.logger.debug('Nothing to do.')
             return 0
 
     def generate_requirements(self):
@@ -211,35 +230,36 @@ class Project(object):
                 for requirement in requirements:
                     if self.name not in requirement:
                         requirements_file.write(requirement + '\n')
-                print('Done.')
+                self.logger.debug('Done.')
             return 0
         except (IOError, OSError):
-            print('Failed.')
+            self.logger.debug('Failed.')
             return 1
 
-    @staticmethod
-    def convert(inputfile, fmt='markdown', target='rst', method='pandoc'):
+
+    def convert(self, inputfile, fmt='markdown', target='rst', method='pandoc'):
         """
         convert a file
 
         :param inputfile: name of input file
         :param fmt: original format of input file, default: markdown
         :param target: convert to target format, default: rst
-        :param method: method for conversion, currently only pandoc is supported. other methods may come in future releases
+        :param method: method for conversion, currently only pandoc is supported.
+                       other methods may come in future releases
         :return:
         """
         output = '{output}.rst'.format(output=os.path.splitext(inputfile)[0])
-        print('"{input}" -> "{output}" ... '.format(input=inputfile, output=output), end='')
+        self.logger.debug('"{input}" -> "{output}" ... '.format(input=inputfile, output=output), end='')
         cmd = ['pandoc', '-f', fmt, '-t', target, inputfile, '-o', output]
 
         code = subprocess.call(cmd)
         if code == 0:
-            print('Done.')
+            self.logger.debug('Done.')
         else:
-            print('Failed (returned {code})!'.format(code=code))
+            self.logger.debug('Failed (returned {code})!'.format(code=code))
 
-    @staticmethod
-    def build(distribution='wheel', universal=True):
+
+    def build(self, distribution='wheel', universal=True):
         """
         build project for distribution
 
@@ -254,7 +274,7 @@ class Project(object):
             'source': 'sdist'
         }.get(distribution, 'sdist')
 
-        print('Building {universal}{dist} distribution... '.format(
+        self.logger.debug('Building {universal}{dist} distribution... '.format(
             dist=distribution,
             universal='universal ' if distribution in ('wheel', 'binary') and universal else ''
         ), end='')
@@ -265,13 +285,13 @@ class Project(object):
                 command.append('--universal')
             code = subprocess.call(command)
         except NameError as e:
-            print('{} ... '.format(e.message), end='')
+            self.logger.debug('{} ... '.format(e.message), end='')
             code = 1
 
         if code == 0:
-            print('Done.')
+            self.logger.debug('Done.')
         else:
-            print('Failed (returned {code})!'.format(code=code))
+            self.logger.debug('Failed (returned {code})!'.format(code=code))
 
         return code
 

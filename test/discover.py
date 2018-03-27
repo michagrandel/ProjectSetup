@@ -62,7 +62,9 @@ def run(tests):
     test_runner = unittest.runner.TextTestRunner(verbosity=2)
     test_runner.run(tests)
 
-
-if __name__ == '__main__':
+def main():
     tests = discover()
     run(tests)
+
+if __name__ == '__main__':
+    main()
