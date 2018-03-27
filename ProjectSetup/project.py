@@ -85,7 +85,7 @@ class Project(object):
         :param name: project name. default: basename of `path`
         :param kwargs: set metadata for the project, like version, status, author, etc.
         """
-        
+
         self.logger = logging.getLogger(logger or "ProjectSetup.project:Project")
         if not logger:
             handler = logging.StreamHandler()
